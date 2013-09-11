@@ -234,6 +234,20 @@ namespace aaalgo {
             }
             return sqrt(err / data.size());
         }
+
+        float evaluate (std::vector<Entry> const &data) const {
+            std::vector<float> output(data.size());
+            float err = 0;
+#pragma omp parallel for reduction(+:err)
+            for (unsigned i = 0; i < data.size(); ++i) {
+                float v = predict(data[i].row, data[i].col);
+                v -= data[i].value;
+                err += v * v;
+            }
+            err /= data.size();
+            err = sqrt(err);
+            return err;
+        }
     };
 }
 

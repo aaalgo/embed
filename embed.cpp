@@ -32,6 +32,7 @@ void read_data (string const &path, bool binary, vector<Embed::Entry> *data) {
 
 int main (int argc, char *argv[]) {
     int maxit;
+    int every;
     float th;
     Embed::Options options;
     std::string train_path;
@@ -41,6 +42,8 @@ int main (int argc, char *argv[]) {
     bool binary = false;
     bool symmetric = false;
     bool override = false;
+    bool snapshot = false;
+    bool reshuffle = false;
 
 
     namespace po = boost::program_options; 
@@ -57,6 +60,9 @@ int main (int argc, char *argv[]) {
     ("override", "override loaded parameters with command")
     ("maxit", po::value(&maxit)->default_value(0), "max iterations.")
     ("th", po::value(&th)->default_value(0), "stopping MSRE.")
+    ("every", po::value(&every)->default_value(10), "")
+    ("snapshot", "")
+    ("reshuffle", "")
     ;
 
     options.add(desc.add_options(), "");
@@ -78,6 +84,9 @@ int main (int argc, char *argv[]) {
     if (vm.count("binary")) binary = true;
     if (vm.count("symmetric")) symmetric = true;
     if (vm.count("override")) override = true;
+    if (vm.count("snapshot")) snapshot = true;
+    if (vm.count("reshuffle")) reshuffle = true;
+
 
     Embed embed;
     if (!load_path.empty()) {
@@ -88,6 +97,11 @@ int main (int argc, char *argv[]) {
 
     if (override || load_path.empty()) {
         embed.options(options);
+    }
+
+    vector<Embed::Entry> test_data;
+    if (!test_path.empty()) {
+        read_data(test_path, binary, &test_data);
     }
 
     if (!train_path.empty()) {
@@ -116,8 +130,19 @@ int main (int argc, char *argv[]) {
         random_shuffle(data.begin(), data.end());
             //init(s1, s2, data);
         for (int it = 0; maxit == 0 || it < maxit; ++it) {
+            if (reshuffle) {
+                random_shuffle(data.begin(), data.end());
+            }
             float v = embed.loop(data);
             cerr << it << '\t' << v << endl;
+            if (every > 0 && (it + 1) % every == 0) {
+                if (snapshot) {
+                    embed.save("snapshot." + save_path + "." + lexical_cast<string>((it + 1) / every));
+                }
+                if (test_data.size()) {
+                    cerr << "RMSE: " << embed.evaluate(test_data);
+                }
+            }
             if (v < th) break;
         }
     }
@@ -126,20 +151,8 @@ int main (int argc, char *argv[]) {
         embed.save(save_path);
     }
 
-    if (!test_path.empty()) {
-        vector<Embed::Entry> data;
-        read_data(test_path, binary, &data);
-        vector<float> output(data.size());
-        float err = 0;
-#pragma omp parallel for reduction(+:err)
-        for (unsigned i = 0; i < data.size(); ++i) {
-            float v = embed.predict(data[i].row, data[i].col);
-            v -= data[i].value;
-            err += v * v;
-        }
-        err /= data.size();
-        err = sqrt(err);
-        cerr << "RMSE: " << err << endl;
+    if (test_data.size()) {
+        cerr << "RMSE: " << embed.evaluate(test_data) << endl;
     }
     return 0;
 }
