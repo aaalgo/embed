@@ -25,31 +25,28 @@ namespace aaalgo {
         typedef ublas::matrix_row<matrix> matrix_row;
 
         class Options {
-            unsigned m_dim;
+            int m_dim;
             float m_r1, m_r2;   // regulation terms
             float m_mom, m_eps, m_init;
             float m_min;
-            float m_th;
-            unsigned m_maxit;
             friend class Embed;
         public:
             void add (po::options_description_easy_init init, string const &prefix = "embed") {
                 init
-                    ((prefix + "-dim").c_str(), po::value(&m_dim)->default_value(20), "dimension")
-                    ((prefix + "-r1").c_str(), po::value(&m_r1)->default_value(0.1), "regulate")
-                    ((prefix + "-r2").c_str(), po::value(&m_r2)->default_value(0.1), "regulate")
-                    ((prefix + "-mom").c_str(), po::value(&m_mom)->default_value(0.9), "moment")
-                    ((prefix + "-eps").c_str(), po::value(&m_eps)->default_value(0.01), "")
-                    ((prefix + "-init").c_str(), po::value(&m_init)->default_value(0.1), "")
-                    ((prefix + "-min").c_str(), po::value(&m_min)->default_value(nanf("")), "")
-                    ((prefix + "-th").c_str(), po::value(&m_th)->default_value(0.5), "")
-                    ((prefix + "-maxit").c_str(), po::value(&m_maxit)->default_value(0), "")
+                    ((prefix + "dim").c_str(), po::value(&m_dim)->default_value(10), "dimension")
+                    ((prefix + "r1").c_str(), po::value(&m_r1)->default_value(0.1), "regulate")
+                    ((prefix + "r2").c_str(), po::value(&m_r2)->default_value(0.1), "regulate")
+                    ((prefix + "mom").c_str(), po::value(&m_mom)->default_value(0.9), "moment")
+                    ((prefix + "eps").c_str(), po::value(&m_eps)->default_value(0.01), "")
+                    ((prefix + "init").c_str(), po::value(&m_init)->default_value(0.1), "")
+                    ((prefix + "min").c_str(), po::value(&m_min)->default_value(nanf("")), "")
                     //(prefix + "-max", po::value(&m_max)->default_value(nanf("")), "")
                 ;
             }
         };
+
     private:
-        unsigned m_size1, m_size2;
+        int m_size1, m_size2;
         float m_min;
         mutable matrix m_data1;
         mutable matrix m_data2;
@@ -62,23 +59,76 @@ namespace aaalgo {
         vector m_bias_delta2;
 
         Options m_options;
+
+        template <typename T>
+        static void write_ublas (ostream &os, T const &v) {
+            os.write(reinterpret_cast<char const *>(&v.data()[0]), sizeof(v.data()[0]) * v.data().size());
+        }
+
+        template <typename T>
+        static void read_ublas (istream &os, T &v) {
+            os.read(reinterpret_cast<char *>(&v.data()[0]), sizeof(v.data()[0]) * v.data().size());
+        }
+
     public:
         struct Entry {
-            unsigned row, col;
+            int row, col;
             float value;
         };
 
-        Embed (Options const &opt): m_options(opt) {
+        Embed () {
         }
 
-        void save () const {
+        void options (Options const &opt) {
+            m_options = opt;
         }
 
-        void load () {
+        void save (string const &path) const {
+            ofstream os(path.c_str(), ios::binary);
+            os.write(reinterpret_cast<char const *>(&m_options), sizeof(m_options));
+            os.write(reinterpret_cast<char const *>(&m_size1), sizeof(m_size1));
+            os.write(reinterpret_cast<char const *>(&m_size2), sizeof(m_size2));
+            os.write(reinterpret_cast<char const *>(&m_min), sizeof(m_min));
+            write_ublas(os, m_data1);
+            write_ublas(os, m_bias1);
+            write_ublas(os, m_delta1);
+            write_ublas(os, m_bias_delta1);
+            if (m_size2) {
+                write_ublas(os, m_data2);
+                write_ublas(os, m_bias2);
+                write_ublas(os, m_delta2);
+                write_ublas(os, m_bias_delta2);
+            }
         }
 
-        void init (unsigned s1, unsigned s2, std::vector<Entry> const &data) {
-            m_size1 = s2;
+        void load (string const &path) {
+            ifstream is(path.c_str(), ios::binary);
+            is.read(reinterpret_cast<char *>(&m_options), sizeof(m_options));
+            is.read(reinterpret_cast<char *>(&m_size1), sizeof(m_size1));
+            is.read(reinterpret_cast<char *>(&m_size2), sizeof(m_size2));
+            is.read(reinterpret_cast<char *>(&m_min), sizeof(m_min));
+            m_data1.resize(m_size1, m_options.m_dim);
+            m_delta1.resize(m_size1, m_options.m_dim);
+            m_bias1.resize(m_size1);
+            m_bias_delta1.resize(m_size1);
+            read_ublas(is, m_data1);
+            read_ublas(is, m_bias1);
+            read_ublas(is, m_delta1);
+            read_ublas(is, m_bias_delta1);
+            if (m_size2) {
+                m_data2.resize(m_size2, m_options.m_dim);
+                m_delta2.resize(m_size2, m_options.m_dim);
+                m_bias2.resize(m_size2);
+                m_bias_delta2.resize(m_size2);
+                read_ublas(is, m_data2);
+                read_ublas(is, m_bias2);
+                read_ublas(is, m_delta2);
+                read_ublas(is, m_bias_delta2);
+            }
+        }
+
+        void init (int s1, int s2, std::vector<Entry> const &data) {
+            m_size1 = s1;
             m_size2 = s2;
             m_data1.resize(s1, m_options.m_dim);
             m_delta1.resize(s1, m_options.m_dim);
@@ -133,7 +183,7 @@ namespace aaalgo {
          *
          *
          */
-        float predict (unsigned row, unsigned col) const {
+        float predict (int row, int col) const {
             if (m_size2) {
                 return ublas::inner_prod(matrix_row(m_data1, row), matrix_row(m_data2, col)) + m_bias1(row) + m_bias2(col) + m_min;
             }
@@ -183,19 +233,6 @@ namespace aaalgo {
                 ++progress;
             }
             return sqrt(err / data.size());
-        }
-
-        /*
-        void train (vector<Entry> const &data) {
-        }
-        */
-        void train (unsigned s1, unsigned s2, std::vector<Entry> const &data) {
-            init(s1, s2, data);
-            for (unsigned it = 0; m_options.m_maxit == 0 || it < m_options.m_maxit; ++it) {
-                float v = loop(data);
-                cerr << it << '\t' << v << endl;
-                if (v < m_options.m_th) break;
-            }
         }
     };
 }
