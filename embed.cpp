@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <boost/program_options.hpp>
+#include <boost/timer/timer.hpp>
 #include "embed.h"
 
 using namespace std;
@@ -129,12 +130,19 @@ int main (int argc, char *argv[]) {
         cerr << "Training ..." << endl;
         random_shuffle(data.begin(), data.end());
             //init(s1, s2, data);
+        timer::cpu_timer timer;
         for (int it = 0; maxit == 0 || it < maxit; ++it) {
-            if (reshuffle) {
-                random_shuffle(data.begin(), data.end());
+            float v = 0;
+            {
+                timer::auto_cpu_timer timer(cerr);
+                if (reshuffle) {
+                    random_shuffle(data.begin(), data.end());
+                }
+                v = embed.loop(data);
+                cerr << it << '\t' << v << endl;
+                cerr << "Loop elapsed: ";
             }
-            float v = embed.loop(data);
-            cerr << it << '\t' << v << endl;
+            cerr << "Total elapsed: " << timer::format(timer.elapsed());
             if (every > 0 && (it + 1) % every == 0) {
                 if (snapshot) {
                     embed.save("snapshot." + save_path + "." + lexical_cast<string>((it + 1) / every));

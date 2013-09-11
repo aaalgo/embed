@@ -2,7 +2,9 @@
 #define AAALGO_EMBED
 
 #include <random>
+#define timer  timer_class
 #include <boost/progress.hpp>
+#undef timer
 #include <boost/numeric/ublas/vector.hpp>
 #include <boost/numeric/ublas/vector_proxy.hpp>
 #include <boost/numeric/ublas/matrix.hpp>
