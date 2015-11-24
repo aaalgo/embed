@@ -49,7 +49,7 @@ namespace aaalgo {
 
     private:
         int m_size1, m_size2;
-        float m_min;
+        float m_min, m_max;
         mutable matrix m_data1;
         mutable matrix m_data2;
         vector m_bias1;
@@ -91,6 +91,7 @@ namespace aaalgo {
             os.write(reinterpret_cast<char const *>(&m_size1), sizeof(m_size1));
             os.write(reinterpret_cast<char const *>(&m_size2), sizeof(m_size2));
             os.write(reinterpret_cast<char const *>(&m_min), sizeof(m_min));
+            os.write(reinterpret_cast<char const *>(&m_max), sizeof(m_max));
             write_ublas(os, m_data1);
             write_ublas(os, m_bias1);
             write_ublas(os, m_delta1);
@@ -109,6 +110,7 @@ namespace aaalgo {
             is.read(reinterpret_cast<char *>(&m_size1), sizeof(m_size1));
             is.read(reinterpret_cast<char *>(&m_size2), sizeof(m_size2));
             is.read(reinterpret_cast<char *>(&m_min), sizeof(m_min));
+            is.read(reinterpret_cast<char *>(&m_max), sizeof(m_max));
             m_data1.resize(m_size1, m_options.m_dim);
             m_delta1.resize(m_size1, m_options.m_dim);
             m_bias1.resize(m_size1);
@@ -144,14 +146,20 @@ namespace aaalgo {
             }
 
             // find minimal value
-            if (isnan(m_options.m_min)) {
+            //if (isnan(m_options.m_min)) {
+            if (1) {
                 m_min = data[0].value;
+                m_max = data[0].value;
                 for (auto const &e: data) {
                     if (e.value < m_min) {
                         m_min = e.value;
                     }
+                    if (e.value > m_max) {
+                        m_max = e.value;
+                    }
                 }
                 cerr << "FOUND MINIMAL VALUE: " << m_min << endl;
+                cerr << "FOUND MAXIMAL VALUE: " << m_max << endl;
             }
             else {
                 m_min = m_options.m_min;
@@ -186,12 +194,16 @@ namespace aaalgo {
          *
          */
         float predict (int row, int col) const {
+            float v = 0;
             if (m_size2) {
-                return ublas::inner_prod(matrix_row(m_data1, row), matrix_row(m_data2, col)) + m_bias1(row) + m_bias2(col) + m_min;
+                v = ublas::inner_prod(matrix_row(m_data1, row), matrix_row(m_data2, col)) + m_bias1(row) + m_bias2(col) + m_min;
             }
             else {
-                return ublas::inner_prod(matrix_row(m_data1, row), matrix_row(m_data1, col)) + m_bias1(row) + m_bias1(col) + m_min;
+                v = ublas::inner_prod(matrix_row(m_data1, row), matrix_row(m_data1, col)) + m_bias1(row) + m_bias1(col) + m_min;
             }
+            if (v > m_max) v = m_max;
+            if (v < m_min) v = m_min;
+            return v;
         }
 
         float loop (std::vector<Entry> const &data) {
